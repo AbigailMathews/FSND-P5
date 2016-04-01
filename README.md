@@ -15,13 +15,9 @@ save images and other documents with associated metadata.
 ---
 
 ## Accessing the Server
-Public IP address: 52.26.87.80
 
-54.208.153.214 --
-ec2-54-208-153-214.compute-1.amazonaws.com
-
-54.209.247.31 --
-ec2-54-209-247-31.compute-1.amazonaws.com
+IP Address: 52.90.89.207
+[http://ec2-52-90-89-207.compute-1.amazonaws.com](http://ec2-52-90-89-207.compute-1.amazonaws.com)
 
 The user grader is provided, along with a keypair for ssh access to the server. The application
 itself can be viewed by navigating to the above address.
@@ -44,7 +40,10 @@ during this process, when asked to assign a password for grader, do so -- it wil
 for sudo access
 
 `sudo nano /etc/sudoers.d/grader`
-grader ALL=(ALL) NOPASSWD: ALL  ... Change to grader ALL=(ALL:ALL) ALL
+
+Add the line:
+
+`grader ALL=(ALL:ALL) ALL`
 
 The grader user is also assigned a unique keypair for ssh access.
 
@@ -108,40 +107,10 @@ already set up with a UTC time zone. However, you can change the timezone if nec
 with the following command: `sudo dpkg-reconfigure tzdata`
 A menu-based tool will allow you to change the timezone.
 
-**********
+
 ### Part 2: Setting up Apache and mod-wsgi
 
-Our application works on python v 2.7.6, so we'll install a virtual environment from which
-to run our program.
-
-*Upgrade python from version 2.7.6 to version 2.7.9*
-
-`sudo apt-get install python-pip`
-
-get the newest python tar file:
-```
-sudo apt-get install build-essential
-sudo apt-get install libreadline-gplv2-dev libncursesw5-dev libssl-dev libsqlite3-dev tk-dev libgdbm-dev libc6-dev libbz2-dev
-
-sudo wget https://www.python.org/ftp/python/2.7.9/Python-2.7.9.tgz
-sudo tar -xvzf Python-2.7.9.tgz
-cd Python-2.7.9
-```
-*****
-./configure --prefix /usr/local/lib/python-2.7.9 --enable-ipv6 
-(if using virtualenv)
-*****
-```
-sudo ./configure
-sudo make
-sudo make install
-```
-
-* lots of messy stuff that's not working around here...
-
-**********
-
-*Install Apache web server, wsgi*
+*Install Apache web server, and mod-wsgi*
 
 `sudo apt-get install apache2`
 
@@ -155,7 +124,6 @@ restart apache:
 
 `sudo service apache2 restart`
 
-************
 
 ### Part 3: Clone our application, install dependencies
 
@@ -169,30 +137,34 @@ Clone our directory from github into /var/www:
 sudo git clone https://github.com/AbigailMathews/catalog_archive.git catalog
 cd catalog
 ```
-Now when we create our virtual environment, we will use the version of python 
-we just installed (2.7.9)
+Change the name of the app.py file to __init__.py, and change the final lines to disable
+debug mode and let the Apache service take over the hosting:
 
-`sudo virtualenv -p /usr/local/lib/python2.7.9/bin/python venv`
-
-I discovered that this venv directory was created with no permissions, so I changed
-them so that I could launch the environment.
 ```
-sudo chmod -R 777  venv
-source venv/bin/activate
+if __name__ == '__main__':
+    app.run()
 ```
-You are now working within the virtual environment, indicated by the (venv) at the beginning
-of the prompt.
 
 *Install Dependencies*
 
 Now we can install Flask as well as any other packages our application relies upon.
 ```
+sudo apt-get install python-pip
+
 sudo pip install Flask
+sudo pip install Flask-Bootstrap
+sudo pip install Flask-SQLAlchemy
+sudo pip install Flask-SeaSurf
+sudo pip install oauth2client
+
+sudo apt-get install libjpeg8-dev
+sudo apt-get install zlib1g-dev
+
+sudo pip install Pillow
 
 sudo apt-get install libpq-dev
-pip install psycopg2
+sudo pip install psycopg2
 ```
-// install other dependencies //
 
 
 ### Part 4: Configure Apache
@@ -200,10 +172,9 @@ pip install psycopg2
 *Create a .htaccess file*
 
 In /var/www/catalog:
-```
-sudo touch .htaccess
-sudo nano .htaccess
-```
+
+`sudo nano .htaccess`
+
 Add the line: `RedirectMatch 404 /\.git`
 
 `sudo nano /etc/apache2/sites-available/catalog.conf`
@@ -211,8 +182,8 @@ Add the line: `RedirectMatch 404 /\.git`
 Paste the following text into the .conf file:
 ```
  <VirtualHost *:80>
-      ServerName 52.26.87.80
-      ServerAdmin admin@52.26.87.80
+      ServerName 52.90.89.207
+      ServerAdmin abbymathews@gmail.com
       WSGIScriptAlias / /var/www/catalog/catalog.wsgi
       <Directory /var/www/catalog/catalog/>
           Order allow,deny
@@ -228,43 +199,53 @@ Paste the following text into the .conf file:
       CustomLog ${APACHE_LOG_DIR}/access.log combined
   </VirtualHost>
 ```
-  
-`sudo service apache2 reload`
-
-`sudo a2ensite catalog` (sudo a2dissite 000-default)
-
-
+Now disable the default site, (the Apache It Works! page), and enable the catalog application.
+```
+sudo a2dissite 000-default
+sudo a2ensite catalog
+sudo service apache2 reload
+```
 
 *Configure WSGI File*
 
-Still in /var/www/catalog
+Still in /var/www/catalog:
 `sudo nano catalog.wsgi`
 
-(missing bit)
+Copy the following code into the file:
 
-USE activate_this.py if using virtualenv
+```
+import sys
+import logging
 
+logging.basicConfig(stream=sys.stderr)
+sys.path.append('/var/www/catalog')
+sys.path.append('/var/www/catalog/catalog')
+
+from catalog import app as application
+application.secret_key = 'my_secret_key'
+```
 
 ### Part 6: Set up Postgresql
 *Install postgresql*
 
 ```
-apt-get install postgresql
+sudo apt-get install postgresql
 sudo nano /etc/postgresql/9.3/main/pg_hba.conf
 sudo passwd postgres
 ```
-create a temporary password to work as the postgres user
+Create a password to work as the postgres user
+
+*Create catalog DB, Create catalog postgres user*
+
 ```
 su postgres
 psql
 ```
 In the psql prompt:
 
-<< OR CREATE USER >>
 ```
->> CREATE ROLE catalog;
+>> CREATE USER catalog;
 >> ALTER USER catalog WITH PASSWORD 'catalog';
->> ALTER ROLE catalog WITH LOGIN;
 >> CREATE DATABASE catalog WITH OWNER catalog;
 >> \c catalog
 >> REVOKE ALL ON SCHEMA public FROM public;
@@ -277,16 +258,137 @@ su grader
 sudo service postgresql restart
 ```
 Change the application's DB calls to reflect the new catalog DB name.
+For instance, create engine statements should now read:
+`engine = create_engine('postgresql://catalog:catalog@localhost/catalog')`
 
-We can now run `database_setup.py` and then `db_populate.py` to create our initial 
-database state.
+In /var/www/catalog/catalog, we can now run `database_setup.py` and then `db_populate.py` 
+to create our initial database state.
 
-### Part 7: Launch
+### Part 7: Check our OAuth setup
 
-Um, yeah
+The catalog site provides two options for users to log in to the site using Oauth. We
+need to make some changes to ensure they continue to function properly.
+
+First we must copy over the client_secrets.json and fb_client_secrets.json, which are
+not provided in the github repo.
+
+A couple of updates to our __init__.py are necessary to change the paths of 
+client_secrets.json and fb_client_secrets.json to the full path, rather than the relative
+paths. These paths should appear as `/var/www/catalog/catalog/client_secrets.json`
+and `/var/www/catalog/catalog/fb_client_secrets.json` respectively.
+
+Finally, we visit console.developers.google.com and developers.facebook.com/apps 
+For Google, update the 'Authorized JavaScript origins' to include the URL for the site,
+in this case `http://ec2-52-90-89-207.compute-1.amazonaws.com`. In 'Authorized redirect URIs,'
+add entries for `http://ec2-52-90-89-207.compute-1.amazonaws.com` + '/login' '/gconnect' and 
+'/collections'
+
+For Facebook, it is sufficient to add `http://ec2-52-90-89-207.compute-1.amazonaws.com` to
+the Settings --> Basic Site URL field.
+
+### Part 8: Launch
+
+Do a final `sudo service apache2 restart`, and check the site with a browser. If
+everything has been set up properly, you will be able to view and interact with your site.
+
+Otherwise, debug by referencing `/var/log/apache2/error.log`
 
 ---
 
-## Sources
+### Extra Features
+*Cron jobs*
 
-A list of sites visited, forum posts, etc. to be copied from my bookmarks folder, with links and possible comments.
+Set up the root crontab to automatically manage the package update/upgrade process.
+`sudo crontab -e`
+to access the root crontab, and then create the following rules:
+```
+@daily apt-get update >> /var/log/cron-updates.log 2>&1
+15 0 * * * apt-get upgrade >> /var/log/cron-upgrades.log 2>&1
+
+# Cycle out the logs each week
+
+30 0 * * 0 mv /var/log/cron-updates.log /var/log/cron-updates-last.log
+30 0 * * 0 mv /var/log/cron-upgrades.log /var/log/cron-upgrades-last.log
+
+45 0 * * 0 rm -f /var/log/cron-updates.log
+45 0 * * 0 rm -f /var/log/cron-upgrades.log
+```
+---
+*Glances*
+
+Glances is a system monitoring tool, which allows a comprehensive snapshot view of
+your system status.
+
+Install it:
+`sudo pip install glances`
+
+Run it:
+`glances`
+
+![View of the Glances system status window][glances.png]
+---
+*Fail2Ban*
+
+Fail2Ban is a service that can protect a system that is being targeted by brute force
+attacks or other botting threats. We will configure Fail2Ban to protect our ssh
+connection, as well as Apache itself.
+
+Installation:
+```
+sudo apt-get update
+sudo apt-get install fail2ban
+```
+We are going to be working with Fail2Ban's jails to modify the default rules and add some
+of our own. Let's first make a new copy of the jail config:
+`sudo cp /etc/fail2ban/jail.conf /etc/fail2ban/jail.local`
+and open it: `sudo nano /etc/fail2ban/jail.local`
+
+For this configuration, I increased the bantime to 1800 sec (from 600), and increased 
+maxretry to 5 (from 3).
+
+Further, set up email alerts by putting relevant data into the destemail, sendername,
+and mta, and changing the action to read `action = $(action_mwl)s
+
+Under the general settings, each service has it's own jail, with specific rules. We are
+concerned with the ssh and apache-related rules.
+
+For ssh, we only modify the port rule, changing it to 2200:
+```
+[ssh]
+
+enabled  = true
+port     = 2200
+filter   = sshd
+logpath  = /var/log/auth.log
+maxretry = 6
+```
+
+For Apache, we enable `apache`, `apache-overflows` and created new `apache-badbots` and
+`apache-nohome` rules replicating the apache-overflows model.. More details on these 
+rules can be found in the Digital Ocean guide on this topic.
+
+If we want Fail2Ban to correctly send emails when action is taken, we must also 
+`sudo apt-get install sendmail`
+
+There are a number of other configuration options with Fail2Ban, and it may be fruitful
+to review these by reviewing the DO guides or the documentation.
+
+## Sources
+Thanks to students on the forums, who suggested both Fail2Ban and Glances, as well as 
+provided links to the very helpful Digital Ocean tutorials, which I found extremely helpful.
+* Norbert Stuken's repo: [https://github.com/stueken/FSND-P5_Linux-Server-Configuration](https://github.com/stueken/FSND-P5_Linux-Server-Configuration)
+* UFW: [https://www.digitalocean.com/community/tutorials/how-to-setup-a-firewall-with-ufw-on-an-ubuntu-and-debian-cloud-server](https://www.digitalocean.com/community/tutorials/how-to-setup-a-firewall-with-ufw-on-an-ubuntu-and-debian-cloud-server)
+* Apache/mod-wsgi: [http://flask.pocoo.org/docs/0.10/deploying/mod_wsgi/](http://flask.pocoo.org/docs/0.10/deploying/mod_wsgi/)
+* Postgresql: [http://killtheyak.com/use-postgresql-with-django-flask/](http://killtheyak.com/use-postgresql-with-django-flask/)
+* Cron Jobs: [http://kvz.io/blog/2007/07/29/schedule-tasks-on-linux-using-crontab/](http://kvz.io/blog/2007/07/29/schedule-tasks-on-linux-using-crontab/)
+* Glances Documentation: [https://pypi.python.org/pypi/Glances](https://pypi.python.org/pypi/Glances)
+* Two Great Fail2Ban Guides from Digital Ocean:
+    - [https://www.digitalocean.com/community/tutorials/how-to-protect-ssh-with-fail2ban-on-ubuntu-14-04](https://www.digitalocean.com/community/tutorials/how-to-protect-ssh-with-fail2ban-on-ubuntu-14-04)
+    - [https://www.digitalocean.com/community/tutorials/how-to-protect-an-apache-server-with-fail2ban-on-ubuntu-14-04](https://www.digitalocean.com/community/tutorials/how-to-protect-an-apache-server-with-fail2ban-on-ubuntu-14-04)
+    
+## Future Improvements
+It was my intention to use virtualenv to create an isolated environment in which to run
+the Flask app. However, despite much assistance from other students in the forums and Slack
+channel, in particular Crewe, I was unable to resolve a problem where mod-wsgi was not using 
+the correct version of Python.
+    
