@@ -325,7 +325,7 @@ Install it:
 Run it:
 `glances`
 
-![View of the Glances system status window][glances.png]
+[View of the Glances system status window](https://github.com/AbigailMathews/FSND-P5/blob/master/glances.png)
 ---
 *Fail2Ban*
 
